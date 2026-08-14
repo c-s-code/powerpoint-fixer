@@ -3,9 +3,9 @@ A VBA script for windows desktop PowerPoint. Release under GNU GPL v2.0.
 
 ## Download & Use
 
-- From releases, download most recent version of PPT_MultiTool.bas
+- Download and unzip most recent Release archive **or** download PPT_MultiTool.bas directly
 - Open VBA editor from PowerPoint project (ALT + F11)
-- File > Import file > select the file
+- File > Import file > select the PPT_MultiTool.bas
 - Run using play button:
   - SlideChecker - cleanup, check, fix, and export
   - Export - export-only
@@ -25,7 +25,6 @@ A VBA script for windows desktop PowerPoint. Release under GNU GPL v2.0.
 - Export:
   - to chosen folder, same name as .pptx file
   - mp4 at 720p
-  - PDF
   
 ## Known issues:
 
