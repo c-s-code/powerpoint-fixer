@@ -1,5 +1,5 @@
 # powerpoint-fixer
-A VBA script for windows desktop PowerPoint.
+A VBA script for windows desktop PowerPoint. Release under GNU GPL v2.0.
 
 ## Download & Use
 
