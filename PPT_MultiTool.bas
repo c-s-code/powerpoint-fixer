@@ -1,5 +1,7 @@
-Attribute VB_Name = "PPT_MultiTool_v1_0"
+Attribute VB_Name = "PPT_MultiTool_v1_1"
+Option Explicit
 '**
+' Version 1.1
 ' License information:
 ' https://github.com/c-s-code/powerpoint-fixer/blob/main/LICENSE
 '**
@@ -30,8 +32,11 @@ Sub SlideChecker()
     'moves all audio to bottom right (ish), sets audio volume to 100% and sets the image as decorative
     'NB about COLLECTIONS (lists) - list indices start at 1
     '**
+    Dim pres as Presentation
+    Set pres = ActivePresentation
+
     Debug.Print (vbNewLine & "======================" & vbNewLine)
-    Debug.Print ("Processing '" & ActivePresentation.Name & "'")
+    Debug.Print ("Processing '" & pres.Name & "'")
     
     Dim slide As slide
     Dim shape As shape
@@ -67,6 +72,7 @@ Sub SlideChecker()
     Dim maxTransitionTolerance As Double
     maxTransitionTolerance = 0.5
     
+    Dim narrationSlowMode as Boolean
     narrationSlowMode = (MsgBox("Slow mode is for lectures recorded correctly, but slowly." & vbNewLine & "(With longer pauses between slides - PPT seems to trim a little off automagically)" & vbNewLine & vbNewLine & "Choose 'Yes' to increase the automatic transition tolerance by 1.5 seconds." & vbNewLine & "Choose 'No' to keep default 0.5s.", vbYesNo, "Enable Slow Mode?") = vbYes)
     If narrationSlowMode Then
         maxTransitionTolerance = maxTransitionTolerance + 1.5
@@ -78,8 +84,10 @@ Sub SlideChecker()
     
     Dim isAudioNarration As Boolean
     
-    hasMovies = HasMovieLookAhead()
-    hasAudio = HasAudioLookAhead()
+    Dim hasMovies as Boolean
+    hasMovies = HasMovieLookAhead(pres)
+    Dim hasAudio as Boolean
+    hasAudio = HasAudioLookAhead(pres)
 
     'ask if is video or audio narration
     isAudioNarration = (MsgBox("Does this presentation use audio narration?" & vbNewLine & vbNewLine & "Choose 'No' to indicate video narration.", vbYesNo, "Narration Type") = vbYes)
@@ -113,7 +121,7 @@ Sub SlideChecker()
        
 
     'loop through each slide in presentation
-    For Each slide In ActivePresentation.Slides
+    For Each slide In pres.Slides
         
         'make slide the active window
         ActiveWindow.View.GotoSlide slide.SlideIndex
@@ -178,18 +186,15 @@ Sub SlideChecker()
         'case for single piece of media
             If audioList.count = 1 Then
                 'audio
-                MoveMedia audioList(1), autoFixAll, moveAudioOff
+                MoveMedia pres, audioList(1), autoFixAll, moveAudioOff
                 SetMaxVolume audioList(1)
                 FixAnimationSettings audioList(1), slide
-                'CheckTimings audioList(1), slide, autoFixAll
                 slideTime = UpdateSlideTime(audioList(1), slideTime)
-                'Debug.Print ("slide time debug - slide no: " & slide.SlideIndex & " - slide time: " & slideTime)
             Else
                 'video
-                MoveMedia videoList(1), autoFixAll, moveAudioOff, True, Not isAudioNarration
+                MoveMedia pres, videoList(1), autoFixAll, moveAudioOff, True, Not isAudioNarration
                 SetMaxVolume videoList(1)
                 FixAnimationSettings videoList(1), slide
-                'CheckTimings videoList(1), slide, autoFixAll
                 slideTime = UpdateSlideTime(videoList(1), slideTime)
             End If
         
@@ -199,19 +204,17 @@ Sub SlideChecker()
             MsgBox "Multiple media files on page - please review!", vbInformation, "Info"
                 
             'audio foreach
+            Dim audioShape as Variant
             For Each audioShape In audioList
                 
                 Dim ashape As shape
                 Set ashape = audioShape 'VBA doesnt do implicit type inheritance?
                 ashape.Select
                 
-                'Debug.Print ("type: " & ashape.Type)
                 isNarration = YesNoDialog(False, "Object: " & ashape.Name & vbNewLine & "Is this audio narration?", "Query")
-                'isNarration = MsgBox("Object: " & ashape.Name & vbNewLine & "Is this audio narration?", vbYesNo, "Query")
             
                 If isNarration = True Then
                     slideTime = UpdateSlideTime(ashape, slideTime)
-                    'CheckTimings ashape, slide, autoFixAll
                     SetMaxVolume ashape
                     FixAnimationSettings ashape, slide
                 Else
@@ -227,7 +230,7 @@ Sub SlideChecker()
                 moveit = YesNoDialog(autoFixAll, "Object: " & ashape.Name & vbNewLine & vbNewLine & "Move this audio shape to bottom right?" & vbNewLine & "Select NO to leave in place", "Move Object?")
                 
                 If moveit = True Then
-                    MoveMedia ashape, autoFixAll, moveAudioOff
+                    MoveMedia pres, ashape, autoFixAll, moveAudioOff
                 Else
     
                 'do nothing
@@ -235,7 +238,7 @@ Sub SlideChecker()
                
             Next audioShape
             
-            
+            Dim videoShape as Variant
             For Each videoShape In videoList
                 
                 Dim vshape As shape
@@ -248,8 +251,7 @@ Sub SlideChecker()
                 
                 If isNarration = True Then
                     slideTime = UpdateSlideTime(vshape, slideTime)
-                    MoveMedia vshape, False, moveAudioOff, True, Not isAudioNarration
-                    'CheckTimings vshape, slide, autoFixAll
+                    MoveMedia pres, vshape, False, moveAudioOff, True, Not isAudioNarration
                 Else
                 'if not narration, ask about removing anim
                     isDelete = YesNoDialog(False, "Remove animation from this non-narration object?" & vbNewLine & "Select NO to retain autoplay or on-click play settings", "Careful!!")
@@ -309,7 +311,7 @@ Sub SlideChecker()
     
     Debug.Print ("issue tracker data: " & issueTracker.count & issueTracker.hiddenSlides & issueTracker.multiAnim.count & issueTracker.zeroAnim.count & issueTracker.animatedTransitions & issueTracker.timingOff)
     'ask to export
-    ExportFiles
+    ExportFiles pres
 
     MsgBox "Processing completed.", vbInformation, "Done"
 End Sub
@@ -320,7 +322,7 @@ End Sub
 '**
 
 
-Sub ExportFiles()
+Sub ExportFiles(pres as Presentation)
 'ask to export mp4 - must export PDF manually to preserve accessible header tags etc
 
     If YesNoDialog(False, "Do you want to export this presentation to video?", "Export files?") Then
@@ -329,12 +331,8 @@ Sub ExportFiles()
         Dim saveName As String
         'Dim targetPath As String
         
-        Dim ppPres As PowerPoint.Presentation
-        
-        Set ppPres = PowerPoint.ActiveWindow.Presentation
-        
         'strip off .pptx from file name
-        saveName = Left(ppPres.Name, InStrRev(ppPres.Name, ".") - 1)
+        saveName = Left(pres.Name, InStrRev(pres.Name, ".") - 1)
         folderPath = GetFolder()
         
         If folderPath = "" Then
@@ -342,7 +340,7 @@ Sub ExportFiles()
             Exit Sub
         End If
 
-        ExportVid ppPres, folderPath, saveName
+        ExportVid pres, folderPath, saveName
         
     Else
         Debug.Print ("Nothing exported.")
@@ -386,7 +384,7 @@ Sub ShowSummary(time As Double, longest As SlideInfo, shortest As SlideInfo, num
 End Sub
 
 
-Sub MoveMedia(shape As shape, autoFixAll As Boolean, audioOffScreen As Boolean, Optional isMovie As Boolean = False, Optional movieNarration As Boolean = False)
+Sub MoveMedia(pres As Presentation, shape As shape, autoFixAll As Boolean, audioOffScreen As Boolean, Optional isMovie As Boolean = False, Optional movieNarration As Boolean = False)
     '**
     'move media to the position required
     'powerpoint uses a 1/2 pixel scale, so 1920x1080 = 960x540 "powerpoint pixels" slide size
@@ -400,6 +398,8 @@ Sub MoveMedia(shape As shape, autoFixAll As Boolean, audioOffScreen As Boolean, 
     Dim h_offset As Integer
     Dim w_offset As Integer
     Dim moveOffPage As Boolean
+    Dim manual_tweak_h as Single
+    Dim manual_tweak_w as Single
     
     h = shape.Height
     w = shape.Width
@@ -413,28 +413,28 @@ Sub MoveMedia(shape As shape, autoFixAll As Boolean, audioOffScreen As Boolean, 
     
     If isMovie = False Then
         If audioOffScreen = True Then
-            shape.Left = ActivePresentation.PageSetup.SlideWidth + 100
+            shape.Left = pres.PageSetup.SlideWidth + 100
         Else
-            shape.Top = ActivePresentation.PageSetup.SlideHeight - h - h_offset - manual_tweak_h
-            shape.Left = ActivePresentation.PageSetup.SlideWidth - w - w_offset - manual_tweak_w
+            shape.Top = pres.PageSetup.SlideHeight - h - h_offset - manual_tweak_h
+            shape.Left = pres.PageSetup.SlideWidth - w - w_offset - manual_tweak_w
         End If
     Else
         If movieNarration Then
             If audioOffScreen Then
-                shape.Left = ActivePresentation.PageSetup.SlideWidth + 100
+                shape.Left = pres.PageSetup.SlideWidth + 100
             End If
         Else
             moveOffPage = YesNoDialog(autoFixAll, "Object: " & shape.Name & vbNewLine & "Move video off the page?", "Move Object?")
             If moveOffPage Then
-                shape.Left = ActivePresentation.PageSetup.SlideWidth + 100
+                shape.Left = pres.PageSetup.SlideWidth + 100
             End If
         End If
     End If
 
+    Exit Sub
+
 ErrorHandler:
     ErrorMsg Err.Description, "MoveMedia"
-Resume Next
-
 End Sub
 
 
@@ -448,12 +448,10 @@ Sub SetMaxVolume(shape As shape)
 
     ashape.MediaFormat.Volume = 1
     
-    Exit Sub ' standard end of sub
+    Exit Sub
     
 ErrorHandler:
     ErrorMsg Err.Description, "SetMaxVolume"
-Resume Next
-
 End Sub
 
 
@@ -464,9 +462,10 @@ Sub FixAnimationSettings(shape As shape, slide As slide)
     shape.AnimationSettings.PlaySettings.PlayOnEntry = True
     shape.AnimationSettings.PlaySettings.HideWhileNotPlaying = True
 
+    Exit Sub
+
 ErrorHandler:
     ErrorMsg Err.Description, "FixAnimationSettings"   
-Resume Next
 End Sub
 
 Function CountSlideAnimations(slide As slide) As Integer
@@ -611,6 +610,8 @@ End Function
 
 Function UpdateSlideTime(shape As shape, currentSlideTime As Double) As Double
     'update the slide time total
+    UpdateSlideTime = currentSlideTime
+
     On Error GoTo ErrorHandler
 
     'update run time for media that is trimmed
@@ -628,8 +629,9 @@ End Function
 
 Function IsMedia(shape As shape, Optional checkMovie As Boolean = False) As Boolean
     'return true if shape is a media file
-    On Error GoTo ErrorHandler
     IsMedia = False
+
+    On Error GoTo ErrorHandler
 
     If shape.Type = msoMedia Then
         If checkMovie = False Then
@@ -652,14 +654,14 @@ ErrorHandler:
     ErrorMsg Err.Description, "IsMedia"       
 End Function
 
-Function HasMovieLookAhead() As Boolean
+Function HasMovieLookAhead(pres as Presentation) As Boolean
     On Error GoTo ErrorHandler    
 
     Dim slide As slide
     Dim shape As shape
     HasMovieLookAhead = False
 
-    For Each slide In ActivePresentation.Slides
+    For Each slide In pres.Slides
         'loop through each shape (object) in slide
         For Each shape In slide.Shapes
             'check if it has video
@@ -677,13 +679,13 @@ ErrorHandler:
     ErrorMsg Err.Description, "HasMovieLookAhead"      
 End Function
 
-Function HasAudioLookAhead() As Boolean
+Function HasAudioLookAhead(pres as Presentation) As Boolean
     On Error GoTo ErrorHandler
 
     Dim slide As slide
     Dim shape As shape
     HasAudioLookAhead = False
-    For Each slide In ActivePresentation.Slides
+    For Each slide In pres.Slides
         For Each shape In slide.Shapes
             'check if it has audio
             If IsMedia(shape) Then
@@ -754,16 +756,17 @@ End Function
 Sub ExportVid(ppPres As Presentation, path As String, FileName As String)
 'export mp4 to target location
     On Error GoTo ErrorHandler
-    Dim presWindow As PowerPoint.Presentation
+    Dim openPres As PowerPoint.Presentation
+    Dim targetPath as String
 
     'check every instance of ppt that is running for exports - they can actually be queued!
-    For Each presWindow In PowerPoint.Presentations
-        If presWindow.CreateVideoStatus = ppMediaTaskStatusInProgress Then
+    For Each openPres In PowerPoint.Presentations
+        If openPres.CreateVideoStatus = ppMediaTaskStatusInProgress Then
             MsgBox "There is already a video export in progress.", vbCritical, "Warning - multiple exports attempted!"
             Debug.Print ("Aborted video export.")
             Exit Sub
         End If
-    Next presWindow
+    Next openPres
     
     targetPath = path & GetOSDivider() & FileName & ".mp4"
     
@@ -781,19 +784,6 @@ ErrorHandler:
     ErrorMsg Err.Description, "ExportVid"
 End Sub
 
-Sub ExportPDF(ppPres As Presentation, path As String, FileName As String)
-'export PDF to target location
-    
-    targetPath = path & GetOSDivider() & FileName & ".pdf"
-    
-    If Not ppPres Is Nothing Then
-        Debug.Print ("Creating the following PDF: " & targetPath)
-        'ppPres.ExportAsFixedFormat path:=targetPath, FixedFormatType:=ppFixedFormatTypePDF, FrameSlides:=msoFalse
-    Else
-        MsgBox "Could not start export.", vbCritical, "Error!"
-        Debug.Print ("Could not create PDF.")
-    End If
-End Sub
 
 Function GetFolder() As String
 'user selects folder to save to
@@ -850,6 +840,8 @@ Function MakeCollectionString(col As Collection) As String
 
     Dim myList As String
     Dim first As Boolean
+    Dim Item as Variant
+
     first = True
     For Each Item In col
         If first Then
@@ -869,7 +861,7 @@ ErrorHandler:
 End Function
 
 Sub ErrorMsg(errMsg As String, funcName As String)
-
+    Dim msg as String
     msg = "Error: " & errMsg & vbNewLine & "Skipped execution in " & funcName
     MsgBox msg, vbCritical, "Error"
     Debug.Print ("Error in " & funcName & ": " & errMsg)
